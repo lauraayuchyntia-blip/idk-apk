@@ -1,0 +1,17 @@
+name: Build companion APK
+on:
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip kangetsu.zip
+        run: unzip -q kangetsu.zip
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: 8.7 }
+      - run: gradle -p kangetsu/android :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with: { name: kangetsu-lyrics-companion-debug, path: kangetsu/android/app/build/outputs/apk/debug/*.apk }
+        
