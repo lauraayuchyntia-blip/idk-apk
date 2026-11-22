@@ -1,16 +1,66 @@
-name: Build companion APK
-on: [push, workflow_dispatch]
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
 jobs:
-  apk:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Unzip kangetsu.zip
-        run: unzip -q kangetsu.zip
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 17 }
-      - uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: 8.7 }
-      - run: gradle -p kangetsu/android :app:assembleDebug
-      - uses: actions/upload-artifact@v4
-        with: { name: kangetsu-lyrics-companion-debug, path: kangetsu/android/app/build/outputs/apk/debug/*.apk }
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply Kangetsu Lyrics patch from kangetsu.zip
+        run: |
+          unzip -q kangetsu.zip
+          mkdir -p src/lyrics
+          cp -r kangetsu/mod/src/lyrics/* src/lyrics/
+          
+          # Sesuaikan konfigurasi mod & tambahkan Engine.cpp di CMakeLists.txt
+          sed -i 's/set(MOD_ID .*/set(MOD_ID "kangetsu_lyrics_port")/' CMakeLists.txt
+          sed -i 's/set(MOD_NAME .*/set(MOD_NAME "Kangetsu Lyrics (port)")/' CMakeLists.txt
+          sed -i 's/set(MOD_LIBRARY_NAME .*/set(MOD_LIBRARY_NAME "kangetsu_lyrics_port")/' CMakeLists.txt
+          sed -i 's/set(MOD_MINECRAFT_VERSIONS .*/set(MOD_MINECRAFT_VERSIONS "[]")/' CMakeLists.txt
+          sed -i 's|src/mod/MyMod.cpp|src/mod/MyMod.cpp src/lyrics/Engine.cpp|' CMakeLists.txt
+
+          # Suntikkan pemanggilan gLyrics ke dalam src/mod/MyMod.cpp
+          python3 -c '
+          p = "src/mod/MyMod.cpp"
+          s = open(p).read()
+          s = "#include \"../lyrics/Engine.hpp\"\nnamespace { kl::Engine gLyrics; }\n" + s
+          s = s.replace("return true;", "return gLyrics.start(getSelf().getId(), getSelf().getResourceDir().string(), [this](const std::string& m) { getSelf().getLogger().info(m); });", 1)
+          s = s.replace("return true;", "gLyrics.stop();\n    return true;", 1)
+          open(p, "w").write(s)
+          '
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: |
+          sdkmanager "platforms;android-28" "ndk;28.2.13676358"
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Build packages
+        shell: pwsh
+        run: ./scripts/package.ps1 -Abi all
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kangetsu-lyrics-levipack
+          path: build-*/*.levipack
+
+      - name: Publish release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build-*/*.levipack
