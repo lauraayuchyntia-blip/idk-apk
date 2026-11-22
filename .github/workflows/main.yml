@@ -1,5 +1,5 @@
 name: Build companion APK
-on:
+on: [push, workflow_dispatch]
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -14,4 +14,3 @@ jobs:
       - run: gradle -p kangetsu/android :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with: { name: kangetsu-lyrics-companion-debug, path: kangetsu/android/app/build/outputs/apk/debug/*.apk }
-        
